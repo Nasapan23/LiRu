@@ -1,0 +1,68 @@
+############################################
+# OS / Editor
+############################################
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.tmp
+*.log
+*.bak
+.idea/
+.vscode/
+*.iml
+
+############################################
+# Node.js / Vite
+############################################
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+dist/
+dist-ssr/
+build/
+.vite/
+.vite-cache/
+
+.env
+.env.*
+!.env.example
+
+############################################
+# Rust / Cargo
+############################################
+target/
+Cargo.lock
+
+# Optional: keep Cargo.lock if this is a binary/app
+# !Cargo.lock
+
+############################################
+# Rust tooling
+############################################
+**/*.rs.bk
+rust-analyzer/
+.rustc_info.json
+
+############################################
+# WASM / Rust + Vite integrations
+############################################
+pkg/
+wasm-pack.log
+
+############################################
+# Testing / Coverage
+############################################
+coverage/
+lcov.info
+
+############################################
+# Misc
+############################################
+*.pid
+*.seed
+*.tgz
+*.zip

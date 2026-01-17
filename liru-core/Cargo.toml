@@ -1,0 +1,24 @@
+[package]
+name = "liru-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# Embassy async runtime
+embassy-executor = { version = "0.7", features = ["arch-cortex-m", "executor-thread"] }
+embassy-time = { version = "0.4", features = ["tick-hz-32_768"] }
+embassy-stm32 = { version = "0.2", features = ["stm32f401re", "time-driver-any", "memory-x"] }
+
+# Cortex-M runtime
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+
+# Logging via RTT
+defmt = "0.3"
+defmt-rtt = "0.4"
+
+# Panic behavior
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+
+# HAL traits
+embedded-hal = "0.2"

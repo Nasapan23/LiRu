@@ -1,0 +1,64 @@
+﻿cargo :    Compiling 
+thiserror-impl 
+v2.0.17
+At line:1 char:1
++ cargo build 
+--release 2>&1 | 
+Out-File -FilePath 
+build_log.txt 
+-Encodi ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (   Comp   
+ iling thiserror-    
+impl v2.0.17:Str    
+ing) [], RemoteE    
+xception
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+   Compiling 
+darling_macro 
+v0.20.11
+   Compiling 
+cortex-m-rt v0.7.5
+   Compiling 
+embassy-hal-internal 
+v0.2.0
+   Compiling 
+panic-probe v0.3.2
+   Compiling 
+defmt-rtt v0.4.2
+   Compiling embassy-
+usb-synopsys-otg 
+v0.2.0
+   Compiling 
+stm32-metapac v16.0.0
+error: failed to 
+remove C:\Users\ionut
+\Documents\LiRu\liru-
+core\target\release\b
+uild\defmt-rtt-d9b850
+2fa3ae5f30\build_scri
+pt_build-d9b8502fa3ae
+5f30.build_script_bui
+ld.703495d9fa535723-c
+gu.0.rcgu.o: The 
+process cannot 
+access the file 
+because it is being 
+used by another 
+process. (os error 
+32)
+
+error: could not 
+compile `defmt-rtt` 
+(build script) due 
+to 1 previous error
+warning: build 
+failed, waiting for 
+other jobs to 
+finish...
