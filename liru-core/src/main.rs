@@ -90,61 +90,51 @@ async fn main(spawner: Spawner) {
                 Ok(cmd) => {
                     match cmd {
                         Command::Motor { left, right } => {
-                            info!("Motor cmd: L={} R={}", left, right);
                             motors.set_both(left, right);
                         }
                         Command::Stop => {
-                            info!("Stop");
                             motors.stop_all();
                         }
                         Command::GetSensors => {
                             let binary = sensors.read_binary(1500);
-                            info!("Sensors: {:08b}", binary);
+                            // Keep infrequent logs or remove if strictly needed, but sensor readout implies we want data
+                            // info!("Sensors: {:08b}", binary); 
                             let _ = bt.send_sensors(binary).await;
                         }
                         Command::GetRawSensors => {
                             let raw = sensors.read_all();
-                            info!("Raw Sens: {:?}", raw);
+                            // info!("Raw Sens: {:?}", raw);
                             let _ = bt.send_raw_sensors(raw).await;
                         }
                         Command::Ping => {
-                            info!("Ping");
                             let _ = bt.send_pong().await;
                         }
                         Command::Unknown(byte) => {
                             // Handle WASD keyboard input
                             match byte {
                                 b'W' | b'w' => {
-                                    info!("Forward");
                                     motors.forward(speed);
                                 }
                                 b'S' | b's' => {
-                                    info!("Backward");
                                     motors.backward(speed);
                                 }
                                 b'A' | b'a' => {
-                                    info!("Turn left");
                                     motors.turn_left(speed);
                                 }
                                 b'D' | b'd' => {
-                                    info!("Turn right");
                                     motors.turn_right(speed);
                                 }
                                 b'Q' | b'q' | b' ' => {
-                                    info!("Stop");
                                     motors.stop_all();
                                 }
                                 b'R' | b'r' => {
-                                    // Read sensors
+                                    // Read sensors - this is manual debug, maybe keep log or remove?
+                                    // Removing log for consistency with speed
                                     let readings = sensors.read_all();
-                                    info!(
-                                        "L1:{} L2:{} L3:{} L4:{} L5:{} L6:{} L7:{} L8:{}",
-                                        readings[0], readings[1], readings[2], readings[3],
-                                        readings[4], readings[5], readings[6], readings[7]
-                                    );
+                                    let _ = bt.send_raw_sensors(readings).await;
                                 }
                                 _ => {
-                                    info!("Unknown: {}", byte);
+                                    // info!("Unknown: {}", byte);
                                 }
                             }
                         }
