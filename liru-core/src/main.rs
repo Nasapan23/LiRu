@@ -1,17 +1,28 @@
 #![no_std]
 #![no_main]
 
-use embedded_hal::Pwm;
+mod motors;
+mod sensors;
+mod bluetooth;
+
 use defmt::info;
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{Level, Output, OutputType, Speed};
-use embassy_stm32::time::hz;
-use embassy_stm32::timer::Channel;
-use embassy_stm32::timer::simple_pwm::{PwmPin, SimplePwm};
-use embassy_stm32::timer::low_level::CountingMode;
+use embassy_stm32::adc::Adc;
+use embassy_stm32::gpio::{Input, Level, Output, Pull, Speed};
+use embassy_stm32::bind_interrupts;
+use embassy_stm32::usart::{Config as UartConfig, Uart};
+
 use embassy_stm32::Config;
 use embassy_time::Timer;
 use {defmt_rtt as _, panic_probe as _};
+
+use motors::MotorController;
+use sensors::LineSensors;
+use bluetooth::{Bluetooth, Command};
+
+bind_interrupts!(struct Irqs {
+    USART6 => embassy_stm32::usart::InterruptHandler<embassy_stm32::peripherals::USART6>;
+});
 
 defmt::timestamp!("{=u64}", { embassy_time::Instant::now().as_millis() });
 
@@ -27,48 +38,125 @@ async fn blink_task(mut led: Output<'static>) {
 async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Config::default());
 
-    info!("LiRu Motor PWM Test Started!");
+    info!("=== LiRu Robot Controller ===");
 
+    // LED blink task
     let led = Output::new(p.PA5, Level::Low, Speed::Low);
     spawner.spawn(blink_task(led)).unwrap();
 
-    let pwm_a_fwd = PwmPin::new_ch1(p.PA8, OutputType::PushPull);
-    let pwm_a_rev = PwmPin::new_ch2(p.PA9, OutputType::PushPull);
-    let pwm_b_fwd = PwmPin::new_ch3(p.PA10, OutputType::PushPull);
-    let pwm_b_rev = PwmPin::new_ch4(p.PA11, OutputType::PushPull);
+    // Initialize motor controller
+    // TIM1: PA8=CH1, PA9=CH2, PA10=CH3, PA11=CH4
+    let mut motors = MotorController::new(p.TIM1, p.PA8, p.PA9, p.PA10, p.PA11);
+    info!("Motors initialized");
 
-    let mut pwm = SimplePwm::new(
-        p.TIM1,
-        Some(pwm_a_fwd),
-        Some(pwm_a_rev),
-        Some(pwm_b_fwd),
-        Some(pwm_b_rev),
-        hz(20_000),
-        CountingMode::EdgeAlignedUp,
+    // Initialize sensors via ADC
+    let adc = Adc::new(p.ADC1);
+    let mut sensors = LineSensors::new(
+        adc,
+        p.PA0, p.PA1, p.PA4, p.PB0, p.PC1, p.PC0, p.PC3, p.PC2
     );
+    info!("Sensors initialized");
 
-    let max = pwm.get_max_duty();
+    // Initialize Bluetooth (USART6)
+    // PC6=TX, PC7=RX, PB6=STATE
+    let mut uart_config = UartConfig::default();
+    uart_config.baudrate = 9600; // HC-05 default baud rate
+    
+    let uart = Uart::new(
+        p.USART6,
+        p.PC7,  // RX
+        p.PC6,  // TX
+        Irqs,
+        p.DMA2_CH6, // TX DMA
+        p.DMA2_CH1, // RX DMA
+        uart_config,
+    ).unwrap();
+    
+    let state_pin = Input::new(p.PB6, Pull::Down);
+    let mut bt = Bluetooth::new(uart, state_pin);
+    info!("Bluetooth initialized (9600 baud)");
 
-    pwm.enable(Channel::Ch1);
-    pwm.enable(Channel::Ch2);
-    pwm.enable(Channel::Ch3);
-    pwm.enable(Channel::Ch4);
+    info!("Ready! Waiting for commands...");
+    info!("Commands: W=forward, S=back, A=left, D=right, Q=stop");
 
-    let mut all_off = |p: &mut SimplePwm<'_, _>| {
-        p.set_duty(Channel::Ch1, 0);
-        p.set_duty(Channel::Ch2, 0);
-        p.set_duty(Channel::Ch3, 0);
-        p.set_duty(Channel::Ch4, 0);
-    };
+    // Motor speed for keyboard control
+    let speed: u8 = 70;
 
     loop {
-        info!("Motor A Forward");
-        all_off(&mut pwm);
-        pwm.set_duty(Channel::Ch1, (max * 70) / 100);
-        Timer::after_secs(2).await;
-
-        info!("All off");
-        all_off(&mut pwm);
-        Timer::after_millis(700).await;
+        // Check Bluetooth connection
+        if bt.is_connected() {
+            // Try to read command
+            match bt.read_command().await {
+                Ok(cmd) => {
+                    match cmd {
+                        Command::Motor { left, right } => {
+                            info!("Motor cmd: L={} R={}", left, right);
+                            motors.set_both(left, right);
+                        }
+                        Command::Stop => {
+                            info!("Stop");
+                            motors.stop_all();
+                        }
+                        Command::GetSensors => {
+                            let binary = sensors.read_binary(1500);
+                            info!("Sensors: {:08b}", binary);
+                            let _ = bt.send_sensors(binary).await;
+                        }
+                        Command::GetRawSensors => {
+                            let raw = sensors.read_all();
+                            info!("Raw Sens: {:?}", raw);
+                            let _ = bt.send_raw_sensors(raw).await;
+                        }
+                        Command::Ping => {
+                            info!("Ping");
+                            let _ = bt.send_pong().await;
+                        }
+                        Command::Unknown(byte) => {
+                            // Handle WASD keyboard input
+                            match byte {
+                                b'W' | b'w' => {
+                                    info!("Forward");
+                                    motors.forward(speed);
+                                }
+                                b'S' | b's' => {
+                                    info!("Backward");
+                                    motors.backward(speed);
+                                }
+                                b'A' | b'a' => {
+                                    info!("Turn left");
+                                    motors.turn_left(speed);
+                                }
+                                b'D' | b'd' => {
+                                    info!("Turn right");
+                                    motors.turn_right(speed);
+                                }
+                                b'Q' | b'q' | b' ' => {
+                                    info!("Stop");
+                                    motors.stop_all();
+                                }
+                                b'R' | b'r' => {
+                                    // Read sensors
+                                    let readings = sensors.read_all();
+                                    info!(
+                                        "L1:{} L2:{} L3:{} L4:{} L5:{} L6:{} L7:{} L8:{}",
+                                        readings[0], readings[1], readings[2], readings[3],
+                                        readings[4], readings[5], readings[6], readings[7]
+                                    );
+                                }
+                                _ => {
+                                    info!("Unknown: {}", byte);
+                                }
+                            }
+                        }
+                    }
+                }
+                Err(_) => {
+                    // Read error, continue
+                }
+            }
+        } else {
+            // Not connected, just blink and wait
+            Timer::after_millis(100).await;
+        }
     }
 }

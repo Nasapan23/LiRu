@@ -2,11 +2,23 @@ import { useState } from 'react';
 import { ControlPad } from './components/ControlPad';
 import { SpeedControl } from './components/SpeedControl';
 import { StatusPanel } from './components/StatusPanel';
+import { SensorDisplay } from './components/SensorDisplay';
 import { useRobotConnection } from './hooks/useRobotConnection';
 
 function App() {
-  const { connectionState, lastMessage, connect, disconnect, sendCommand } = useRobotConnection();
-  const [comPort, setComPort] = useState('COM5');
+  const {
+    connectionState,
+    lastMessage,
+    sensorBinary,
+    rawSensorData,
+    connect,
+    disconnect,
+    sendCommand,
+    sendMotor,
+    sendStop,
+    requestSensors
+  } = useRobotConnection();
+  const [comPort, setComPort] = useState('COM12');
   const [speed, setSpeed] = useState(50);
 
   const handleConnect = () => {
@@ -50,26 +62,54 @@ function App() {
               </div>
             </div>
 
+            {/* Sensor display */}
+            <div className="bg-gray-800/50 rounded-2xl p-6 backdrop-blur-sm border border-gray-700/50">
+              <SensorDisplay
+                sensorBinary={sensorBinary}
+                rawSensorData={rawSensorData}
+                onRequestSensors={requestSensors}
+                disabled={!isConnected}
+              />
+            </div>
+
             {/* Quick actions */}
             <div className="bg-gray-800/50 rounded-2xl p-6 backdrop-blur-sm border border-gray-700/50">
               <h3 className="text-gray-400 text-sm font-medium mb-4">QUICK ACTIONS</h3>
               <div className="flex flex-wrap gap-3">
                 <button
-                  onClick={() => sendCommand('E')}
+                  onClick={sendStop}
                   disabled={!isConnected}
                   className="px-6 py-3 bg-red-600 text-white font-medium rounded-xl hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  🛑 Emergency Brake
+                  🛑 Emergency Stop
                 </button>
                 <button
-                  onClick={() => {
-                    sendCommand('W');
-                    setTimeout(() => sendCommand('Q'), 1000);
-                  }}
+                  onClick={() => sendMotor(speed, speed)}
+                  disabled={!isConnected}
+                  className="px-6 py-3 bg-green-600 text-white font-medium rounded-xl hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ⏩ Forward ({speed}%)
+                </button>
+                <button
+                  onClick={() => sendMotor(-speed, -speed)}
                   disabled={!isConnected}
                   className="px-6 py-3 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  ⏱️ Test (1s Forward)
+                  ⏪ Reverse ({speed}%)
+                </button>
+                <button
+                  onClick={() => sendMotor(-speed, speed)}
+                  disabled={!isConnected}
+                  className="px-6 py-3 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ↩️ Spin Left
+                </button>
+                <button
+                  onClick={() => sendMotor(speed, -speed)}
+                  disabled={!isConnected}
+                  className="px-6 py-3 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  ↪️ Spin Right
                 </button>
               </div>
             </div>
@@ -110,10 +150,6 @@ function App() {
                   <span className="text-gray-400">Stop</span>
                   <span className="text-gray-300 font-mono">Q / Space</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-400">Brake</span>
-                  <span className="text-gray-300 font-mono">E</span>
-                </div>
               </div>
             </div>
           </div>
@@ -124,7 +160,7 @@ function App() {
       <footer className="border-t border-gray-700/50 mt-12">
         <div className="max-w-6xl mx-auto px-6 py-4">
           <p className="text-gray-500 text-sm text-center">
-            LiRu Line-Following Robot • Nucleo F401RE + DRV8833
+            LiRu Line-Following Robot • Nucleo F401RE + DRV8833 + HY-S301
           </p>
         </div>
       </footer>

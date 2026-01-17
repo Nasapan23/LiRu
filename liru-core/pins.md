@@ -58,3 +58,16 @@ Sensor 6: PA12
 Sensor 7: PA6
 Sensor 8: PA7
 PB6 BLUETOOTH STATE
+
+
+
+<!-- Changed Pins wrongly connected -->
+
+ PA0 - Line 1 - ADC1/0
+PA1 - Line 2 - ADC1/1
+PA4 - Line 3 - ADC1/4
+PB0 - Line 4 - ADC1/8
+PC1 - Line 5 - ADC1/11
+PC0 - Line 6 - ADC1/10
+PC3 - Line 7 - ADC1/13
+PC2 - Line 8 - ADC1/12 
