@@ -34,7 +34,7 @@ function App() {
         <div className="max-w-6xl mx-auto px-6 py-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <span className="text-xl">🤖</span>
+              <span className="text-xl font-bold">LR</span>
             </div>
             <div>
               <h1 className="text-xl font-bold">LiRu Control</h1>
@@ -81,35 +81,35 @@ function App() {
                   disabled={!isConnected}
                   className="px-6 py-3 bg-red-600 text-white font-medium rounded-xl hover:bg-red-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  🛑 Emergency Stop
+                  Emergency Stop
                 </button>
                 <button
                   onClick={() => sendMotor(speed, speed)}
                   disabled={!isConnected}
                   className="px-6 py-3 bg-green-600 text-white font-medium rounded-xl hover:bg-green-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  ⏩ Forward ({speed}%)
+                  Forward ({speed}%)
                 </button>
                 <button
                   onClick={() => sendMotor(-speed, -speed)}
                   disabled={!isConnected}
                   className="px-6 py-3 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  ⏪ Reverse ({speed}%)
+                  Reverse ({speed}%)
                 </button>
                 <button
                   onClick={() => sendMotor(-speed, speed)}
                   disabled={!isConnected}
                   className="px-6 py-3 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  ↩️ Spin Left
+                  Spin Left
                 </button>
                 <button
                   onClick={() => sendMotor(speed, -speed)}
                   disabled={!isConnected}
                   className="px-6 py-3 bg-gray-700 text-white font-medium rounded-xl hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  ↪️ Spin Right
+                  Spin Right
                 </button>
               </div>
             </div>

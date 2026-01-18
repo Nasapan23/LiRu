@@ -78,7 +78,7 @@ export function ControlPad({ onCommand, disabled = false }: ControlPadProps) {
                     onMouseLeave={() => handleClick('Q')}
                     disabled={disabled}
                 >
-                    ▲
+                    W
                 </button>
             </div>
 
@@ -91,14 +91,14 @@ export function ControlPad({ onCommand, disabled = false }: ControlPadProps) {
                     onMouseLeave={() => handleClick('Q')}
                     disabled={disabled}
                 >
-                    ◄
+                    A
                 </button>
                 <button
                     className={`${buttonClass} ${!disabled && 'bg-gradient-to-b from-red-600 to-red-700 hover:from-red-500 hover:to-red-600'}`}
                     onClick={() => handleClick('Q')}
                     disabled={disabled}
                 >
-                    ■
+                    STOP
                 </button>
                 <button
                     className={buttonClass}
@@ -107,7 +107,7 @@ export function ControlPad({ onCommand, disabled = false }: ControlPadProps) {
                     onMouseLeave={() => handleClick('Q')}
                     disabled={disabled}
                 >
-                    ►
+                    D
                 </button>
             </div>
 
@@ -120,7 +120,7 @@ export function ControlPad({ onCommand, disabled = false }: ControlPadProps) {
                     onMouseLeave={() => handleClick('Q')}
                     disabled={disabled}
                 >
-                    ▼
+                    S
                 </button>
             </div>
 
