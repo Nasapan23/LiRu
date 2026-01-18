@@ -16,13 +16,27 @@ function App() {
     sendCommand,
     sendMotor,
     sendStop,
-    requestSensors
+    requestSensors,
+    sendSetMode,
+    setPollingEnabled
   } = useRobotConnection();
   const [comPort, setComPort] = useState('COM12');
   const [speed, setSpeed] = useState(50);
+  const [mode, setMode] = useState<'car' | 'line'>('car');
 
   const handleConnect = () => {
     connect(comPort);
+  };
+
+  const handleModeChange = (newMode: 'car' | 'line') => {
+    setMode(newMode);
+    sendSetMode(newMode);
+    if (newMode === 'car') {
+      setPollingEnabled(false);
+    } else {
+      // TODO: Line follower mode insfarsit
+      setPollingEnabled(false);
+    }
   };
 
   const isConnected = connectionState === 'connected';
@@ -32,13 +46,38 @@ function App() {
       {/* Header */}
       <header className="border-b border-gray-700/50 bg-gray-900/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <span className="text-xl font-bold">LR</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <span className="text-xl font-bold">LR</span>
+              </div>
+              <div>
+                <h1 className="text-xl font-bold">LiRu Control</h1>
+                <p className="text-gray-400 text-sm">Robot Dashboard</p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold">LiRu Control</h1>
-              <p className="text-gray-400 text-sm">Robot Dashboard</p>
+            {/* Mode Switcher in Header */}
+            <div className="flex bg-gray-800 rounded-lg p-1 border border-gray-700">
+              <button
+                onClick={() => handleModeChange('car')}
+                disabled={!isConnected}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${mode === 'car'
+                  ? 'bg-blue-600 text-white shadow-lg'
+                  : 'text-gray-400 hover:text-white'
+                  }`}
+              >
+                Car Mode
+              </button>
+              <button
+                onClick={() => handleModeChange('line')}
+                disabled={!isConnected}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${mode === 'line'
+                  ? 'bg-purple-600 text-white shadow-lg'
+                  : 'text-gray-400 hover:text-white'
+                  }`}
+              >
+                Line Follower
+              </button>
             </div>
           </div>
         </div>
@@ -52,12 +91,12 @@ function App() {
             {/* Control panel */}
             <div className="bg-gray-800/50 rounded-2xl p-8 backdrop-blur-sm border border-gray-700/50">
               <div className="flex flex-col md:flex-row items-center justify-center gap-12">
-                <ControlPad onCommand={sendCommand} disabled={!isConnected} />
+                <ControlPad onCommand={sendCommand} disabled={!isConnected || mode === 'line'} />
                 <SpeedControl
                   speed={speed}
                   onSpeedChange={setSpeed}
                   onSpeedCommand={sendCommand}
-                  disabled={!isConnected}
+                  disabled={!isConnected || mode === 'line'}
                 />
               </div>
             </div>

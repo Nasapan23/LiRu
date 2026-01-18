@@ -34,6 +34,12 @@ async fn blink_task(mut led: Output<'static>) {
     }
 }
 
+#[derive(PartialEq)]
+enum RobotMode {
+    Car,
+    LineFollower,
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_stm32::init(Config::default());
@@ -81,6 +87,9 @@ async fn main(spawner: Spawner) {
 
     // Motor speed for keyboard control
     let speed: u8 = 70;
+    
+    // Default mode
+    let mut mode = RobotMode::Car;
 
     loop {
         // Check Bluetooth connection
@@ -95,13 +104,24 @@ async fn main(spawner: Spawner) {
                         Command::Stop => {
                             motors.stop_all();
                         }
+                        Command::SetMode(m) => {
+                            if m == 1 {
+                                mode = RobotMode::LineFollower;
+                                info!("Switched to Line Follower Mode");
+                            } else {
+                                mode = RobotMode::Car;
+                                info!("Switched to Car Mode");
+                            }
+                        }
                         Command::GetSensors => {
+                            // Only allow reading sensors if requested, regardless of mode (debug)
                             let binary = sensors.read_binary(1500);
                             // Keep infrequent logs or remove if strictly needed, but sensor readout implies we want data
                             // info!("Sensors: {:08b}", binary); 
                             let _ = bt.send_sensors(binary).await;
                         }
                         Command::GetRawSensors => {
+                             // Only allow reading sensors if requested
                             let raw = sensors.read_all();
                             // info!("Raw Sens: {:?}", raw);
                             let _ = bt.send_raw_sensors(raw).await;

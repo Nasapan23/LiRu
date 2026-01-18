@@ -98,7 +98,13 @@ impl<'d> MotorController<'d> {
     /// * `direction` - Direction of rotation
     /// * `speed_percent` - Speed as percentage (0-100)
     pub fn set_motor(&mut self, motor: Motor, direction: Direction, speed_percent: u8) {
-        let speed = speed_percent.min(100) as u32;
+        // Hardware calibration: Boost left motor by 1.5x due to friction
+        let adjusted_speed = match motor {
+            Motor::Left => (speed_percent as f32 * 1.5) as u32,
+            Motor::Right => speed_percent as u32,
+        };
+        
+        let speed = adjusted_speed.min(100);
         let duty = self.max_duty * speed / 100;
 
         let (fwd_ch, rev_ch) = match motor {

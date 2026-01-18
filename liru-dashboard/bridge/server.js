@@ -29,6 +29,7 @@ const CMD = {
     GET_SENSORS: 0x03,
     PING: 0x04,
     GET_RAW_SENSORS: 0x05,
+    SET_MODE: 0x06,
 };
 
 const MSG = {
@@ -93,6 +94,14 @@ wss.on('connection', (ws) => {
                     if (serialPort && serialPort.isOpen) {
                         serialPort.write(Buffer.from([CMD.PING]));
                         console.log(`→ Ping`);
+                    }
+                    break;
+
+                case 'setMode':
+                    if (serialPort && serialPort.isOpen) {
+                        const mode = message.mode === 1 ? 1 : 0;
+                        serialPort.write(Buffer.from([CMD.SET_MODE, mode]));
+                        console.log(`→ Set Mode: ${mode === 0 ? 'Car' : 'Line Follower'}`);
                     }
                     break;
 

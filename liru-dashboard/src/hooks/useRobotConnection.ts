@@ -16,6 +16,9 @@ interface UseRobotConnectionReturn {
     requestSensors: () => void;
     requestRawSensors: () => void;
     sendPing: () => void;
+    sendSetMode: (mode: 'car' | 'line') => void;
+    pollingEnabled: boolean;
+    setPollingEnabled: (enabled: boolean) => void;
 }
 
 export function useRobotConnection(): UseRobotConnectionReturn {
@@ -126,16 +129,26 @@ export function useRobotConnection(): UseRobotConnectionReturn {
         }
     }, [ws, connectionState]);
 
-    // Auto-poll sensors when connected
+    // Set Mode
+    const sendSetMode = useCallback((mode: 'car' | 'line') => {
+        if (ws && connectionState === 'connected') {
+            const modeByte = mode === 'line' ? 1 : 0;
+            ws.send(JSON.stringify({ type: 'setMode', mode: modeByte }));
+        }
+    }, [ws, connectionState]);
+
+    const [pollingEnabled, setPollingEnabled] = useState(false);
+
+    // Auto-poll sensors when connected AND polling is enabled
     useEffect(() => {
-        if (connectionState === 'connected') {
+        if (connectionState === 'connected' && pollingEnabled) {
             const interval = setInterval(() => {
                 requestSensors();
                 requestRawSensors();
             }, 100);
             return () => clearInterval(interval);
         }
-    }, [connectionState, requestSensors, requestRawSensors]);
+    }, [connectionState, pollingEnabled, requestSensors, requestRawSensors]);
 
     useEffect(() => {
         return () => {
@@ -159,5 +172,8 @@ export function useRobotConnection(): UseRobotConnectionReturn {
         requestSensors,
         requestRawSensors,
         sendPing,
+        sendSetMode,
+        pollingEnabled,
+        setPollingEnabled
     };
 }

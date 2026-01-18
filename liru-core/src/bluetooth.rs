@@ -25,6 +25,8 @@ pub mod cmd {
     pub const PING: u8 = 0x04;
     /// Request raw sensor data (16-bit)
     pub const GET_RAW_SENSORS: u8 = 0x05;
+    /// Set robot mode: [CMD_SET_MODE, mode_byte] (0=Car, 1=Line)
+    pub const SET_MODE: u8 = 0x06;
 }
 
 /// Message types to GUI
@@ -54,6 +56,8 @@ pub enum Command {
     GetRawSensors,
     /// Ping request
     Ping,
+    /// Set Robot Mode
+    SetMode(u8),
     /// Unknown command
     Unknown(u8),
 }
@@ -129,6 +133,10 @@ impl<'d> Bluetooth<'d> {
             cmd::GET_SENSORS => Ok(Command::GetSensors),
             cmd::GET_RAW_SENSORS => Ok(Command::GetRawSensors),
             cmd::PING => Ok(Command::Ping),
+            cmd::SET_MODE => {
+                let mode = self.read_byte().await?;
+                Ok(Command::SetMode(mode))
+            }
             other => Ok(Command::Unknown(other)),
         }
     }
