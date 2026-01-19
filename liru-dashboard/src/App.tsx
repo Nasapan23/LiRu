@@ -17,11 +17,15 @@ function App() {
     sendMotor,
     sendStop,
     requestSensors,
+    requestRawSensors,
     sendSetMode,
     sendStart,
     resetCalibration,
     setPollingEnabled,
-    calibrationStatus
+    pollingEnabled,
+    calibrationStatus,
+    debugLog,
+    clearDebugLog
   } = useRobotConnection();
   const [comPort, setComPort] = useState('COM12');
   const [speed, setSpeed] = useState(50);
@@ -188,6 +192,40 @@ function App() {
                     </div>
                   )}
 
+                  {/* Debug Log Panel - Always visible in Line Follower mode */}
+                  <div className="mt-6 w-full max-w-lg mx-auto">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-xs text-gray-500 uppercase">Debug Log ({debugLog.length} entries)</span>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(debugLog.join('\n'));
+                          }}
+                          className="px-3 py-1 bg-blue-600/20 text-blue-400 text-xs rounded hover:bg-blue-600 hover:text-white transition-all"
+                        >
+                          Copy All
+                        </button>
+                        <button
+                          onClick={clearDebugLog}
+                          className="px-3 py-1 bg-gray-600/20 text-gray-400 text-xs rounded hover:bg-gray-600 hover:text-white transition-all"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                    <div className="bg-gray-900/80 p-3 rounded-xl border border-gray-700 h-40 overflow-y-auto font-mono text-xs">
+                      {debugLog.length === 0 ? (
+                        <div className="text-gray-500 text-center py-4">No debug messages yet</div>
+                      ) : (
+                        debugLog.map((msg, i) => (
+                          <div key={i} className="text-gray-300 py-0.5 border-b border-gray-800 last:border-0">
+                            {msg}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
                   <div className="mt-8 flex justify-center gap-4">
                     <button
                       onClick={() => {
@@ -216,6 +254,74 @@ function App() {
               onConnect={handleConnect}
               onDisconnect={disconnect}
             />
+
+            {/* Raw Sensor Debug Panel */}
+            <div className="bg-gray-800/50 rounded-2xl p-6 backdrop-blur-sm border border-gray-700/50">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-gray-400 text-sm font-medium">RAW SENSOR DEBUG</h3>
+                <button
+                  onClick={() => setPollingEnabled(!pollingEnabled)}
+                  disabled={!isConnected}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${pollingEnabled
+                      ? 'bg-green-600 text-white hover:bg-green-500'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {pollingEnabled ? 'POLLING ON' : 'START POLL'}
+                </button>
+              </div>
+
+              <div className="space-y-2">
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+                  const value = rawSensorData[i] ?? 0;
+                  const percentage = (value / 4095) * 100;
+                  // Flag potentially dead sensors
+                  const isStuck = pollingEnabled && (value === 0 || value >= 4090);
+
+                  return (
+                    <div key={i} className="flex items-center gap-3">
+                      <span className={`text-xs font-mono w-6 ${isStuck ? 'text-red-400' : 'text-gray-500'}`}>
+                        S{i + 1}
+                      </span>
+                      <div className="flex-1 h-4 bg-gray-900 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full transition-all duration-150 ${isStuck
+                              ? 'bg-red-500'
+                              : value > 2000
+                                ? 'bg-purple-500'
+                                : 'bg-blue-500'
+                            }`}
+                          style={{ width: `${percentage}%` }}
+                        />
+                      </div>
+                      <span className={`text-xs font-mono w-12 text-right ${isStuck ? 'text-red-400' : 'text-gray-300'}`}>
+                        {value}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {pollingEnabled && rawSensorData.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-700">
+                  <div className="text-xs text-gray-500 mb-1">Quick Reference</div>
+                  <div className="flex gap-4 text-xs">
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                      <span className="text-gray-400">Low (white)</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+                      <span className="text-gray-400">High (black)</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+                      <span className="text-gray-400">Stuck/Dead</span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Command log */}
             {mode === 'car' && (

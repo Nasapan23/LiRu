@@ -98,7 +98,7 @@ impl<'d> MotorController<'d> {
     /// * `direction` - Direction of rotation
     /// * `speed_percent` - Speed as percentage (0-100)
     pub fn set_motor(&mut self, motor: Motor, direction: Direction, speed_percent: u8) {
-        // Both motors use 1x power
+        // Both motors use equal power for now
         let adjusted_speed = speed_percent as u32;
         
         let speed = adjusted_speed.min(100);

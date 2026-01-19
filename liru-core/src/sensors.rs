@@ -173,5 +173,43 @@ impl<'d> CalibratedSensors<'d> {
         }
         result
     }
+
+    /// Calculate weighted line position using calibrated values.
+    /// Returns (position, intensity)
+    /// position: -3500 (Right/Index0) to 3500 (Left/Index7), 0 is Center.
+    /// intensity: Sum of calibrated sensor values (0-8000), useful for line loss detection.
+    pub fn read_line_position(&mut self) -> (i32, u32) {
+        let readings = self.sensors.read_all();
+        let mut weighted_sum: i32 = 0;
+        let mut total_intensity: u32 = 0;
+
+        for (i, &raw_val) in readings.iter().enumerate() {
+            let min = self.min_readings[i];
+            let max = self.max_readings[i];
+            
+            // Normalize raw_val to 0-1000
+            let val = if raw_val <= min {
+                0
+            } else if raw_val >= max {
+                1000
+            } else {
+                let range = max - min;
+                if range == 0 { 0 } else { ((raw_val - min) as u32 * 1000 / range as u32) as u32 }
+            };
+
+            total_intensity += val;
+            weighted_sum += val as i32 * (i as i32 * 1000);
+        }
+
+        if total_intensity < 500 {
+             // Line lost (roughly < 0.5 sensor active)
+             return (0, 0); 
+        }
+
+        let position = weighted_sum / total_intensity as i32;
+        // Shift to be centered around 0
+        // Range 0..7000 -> -3500..3500
+        (position - 3500, total_intensity)
+    }
 }
 

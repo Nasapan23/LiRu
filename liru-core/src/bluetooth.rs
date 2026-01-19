@@ -47,6 +47,8 @@ pub mod msg {
     pub const CALIBRATION_START: u8 = 0x15;
     /// Calibration ended
     pub const CALIBRATION_END: u8 = 0x16;
+    /// Analog debug data: [MSG_DEBUG_ANALOG, PosH, PosL, IntH, IntL, Steer, L_Speed, R_Speed]
+    pub const DEBUG_ANALOG: u8 = 0x17;
     /// Error message
     pub const ERROR: u8 = 0xFF;
 }
@@ -152,6 +154,31 @@ impl<'d> Bluetooth<'d> {
     /// motor_action: 0=stop, 1=forward, 2=left, 3=right
     pub async fn send_debug(&mut self, mode: u8, position: u8, motor_action: u8) -> Result<(), usart::Error> {
         self.write(&[msg::DEBUG, mode, position, motor_action]).await
+    }
+
+    /// Send detailed analog debug message (7 bytes payload)
+    /// [Type 0x17] [Pos_H] [Pos_L] [Int_H] [Int_L] [Steer] [L_Speed] [R_Speed]
+    pub async fn send_analog_debug(
+        &mut self, 
+        position: i16, 
+        intensity: u16, 
+        steering: i8,
+        left_speed: u8,
+        right_speed: u8
+    ) -> Result<(), usart::Error> {
+        let pos_bytes = position.to_be_bytes();
+        let int_bytes = intensity.to_be_bytes();
+        // steering is i8, map to u8 (safe cast)
+        let steer_byte = steering as u8;
+        
+        self.write(&[
+            msg::DEBUG_ANALOG, 
+            pos_bytes[0], pos_bytes[1],
+            int_bytes[0], int_bytes[1],
+            steer_byte,
+            left_speed,
+            right_speed
+        ]).await
     }
 
     /// Read and parse a command from GUI

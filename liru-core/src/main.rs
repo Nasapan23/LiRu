@@ -92,6 +92,20 @@ async fn main(spawner: Spawner) {
     
     // Default mode
     let mut mode = RobotMode::Car;
+    
+    // Line follower: remember last direction (0=forward, -1=left, 1=right)
+    let mut last_direction: i8 = 0;
+    
+    // Analog telemetry tracking
+    let mut last_weighted_pos: i32 = 0;
+    let mut last_intensity: u32 = 0;
+    let mut last_steering: i32 = 0;
+    let mut last_left_speed: u8 = 0;
+    let mut last_right_speed: u8 = 0;
+    
+    // Debug: send info every N iterations to avoid spam
+    let mut loop_counter: u32 = 0;
+    let mut last_position: u8 = 0;
 
     loop {
         // Check Bluetooth connection
@@ -195,7 +209,13 @@ async fn main(spawner: Spawner) {
         // Logic loop based on mode (Non-blocking)
         match mode {
             RobotMode::Car => {
-                // Controlled via Bluetooth/UART, nothing to do here
+                // Debug: Print raw sensor ADC values every 50 loops (~500ms)
+                if loop_counter % 50 == 0 {
+                    let raw = sensors.read_all();
+                    info!("ADC: {} {} {} {} {} {} {} {}", 
+                        raw[0], raw[1], raw[2], raw[3], 
+                        raw[4], raw[5], raw[6], raw[7]);
+                }
             }
             RobotMode::LineFollowerIdle => {
                 // Waiting for Start command
@@ -212,32 +232,92 @@ async fn main(spawner: Spawner) {
                 }
             }
             RobotMode::LineFollowerRunning => {
-                let position = sensors.read_binary();
-                // Sensors: bit 0 = sensor 1 (left edge), bit 7 = sensor 8 (right edge)
+                // Read weighted position (-3500 to 3500) and intensity
+                let (raw_position, intensity) = sensors.read_line_position();
                 
-                // Count how many sensors see the line
-                let sensor_count = position.count_ones();
+                // Use raw position directly - no offset needed
+                // Positive = line on right side, Negative = line on left side
+                let position = raw_position;
                 
-                if sensor_count == 0 {
-                    // No sensors - lost line, keep going forward slowly
-                    motors.forward(50);
-                } else if sensor_count >= 6 {
-                    // Too many sensors on - probably confused or bad calibration
-                    // Just go forward at medium speed
-                    motors.forward(60);
-                } else if (position & 0b00011000) != 0 && sensor_count <= 4 {
-                    // Center sensors (bits 3,4) see line and not too many sensors
-                    motors.forward(80);
-                } else if (position & 0b11100000) != 0 {
-                    // Left side sensors (bits 5,6,7) see line -> Turn Left
-                    motors.turn_left(70);
-                } else if (position & 0b00000111) != 0 {
-                    // Right side sensors (bits 0,1,2) see line -> Turn Right
-                    motors.turn_right(70);
+                // Update telemetry (show corrected position)
+                last_weighted_pos = position;
+                last_intensity = intensity;
+                
+                // For debug output
+                let raw_binary = sensors.read_binary(); 
+                last_position = raw_binary;
+
+                if intensity == 0 {
+                    // Lost line - search in last known direction (moderate speed)
+                    match last_direction {
+                        d if d < 0 => motors.turn_left(55),
+                        d if d > 0 => motors.turn_right(55),
+                        _ => motors.forward(50),
+                    }
                 } else {
-                    // Default - go forward
-                    motors.forward(60);
+                    // Line found - Deliberate Proportional Control
+                    // Physical orientation: Index 0 = Left side of robot
+                    // Negative position = line on LEFT -> need to turn LEFT
+                    
+                    // Absolute position determines behavior
+                    let abs_pos = if position < 0 { -position } else { position };
+                    
+                    // Constants - gentler steering response
+                    let kp_divisor: i32 = 100;
+                    
+                    // Calculate steering adjustment
+                    let steering = position / kp_divisor;
+                    
+                    // Speed depends on how centered the line is
+                    // More centered = faster, off-center = slower but still moving
+                    // Minimum 50 to overcome motor friction!
+                    let base_speed: i32 = if abs_pos < 500 {
+                        // Line is well centered - go at good speed
+                        65
+                    } else if abs_pos < 1500 {
+                        // Line is slightly off - moderate speed
+                        55
+                    } else {
+                        // Line is far off - slower but still moving
+                        50
+                    };
+                    
+                    // Calculate motor speeds (cap at 75 for safety)
+                    let left_speed = (base_speed + steering).clamp(0, 75) as i8;
+                    let right_speed = (base_speed - steering).clamp(0, 75) as i8;
+                    
+                    motors.set_both(left_speed, right_speed);
+                    
+                    // Update telemetry
+                    last_steering = steering;
+                    last_left_speed = left_speed as u8;
+                    last_right_speed = right_speed as u8;
+                    
+                    // Update last direction for when we lose line
+                    if steering > 5 {
+                        last_direction = 1;  // Was turning right
+                    } else if steering < -5 {
+                        last_direction = -1; // Was turning left
+                    } else {
+                        last_direction = 0;  // Going straight
+                    }
                 }
+            }
+        }
+        
+        // Increment loop counter for periodic debug
+        loop_counter += 1;
+        
+        // Send debug info every 20 loops (~200ms) when in LineFollowerRunning
+        if let RobotMode::LineFollowerRunning = mode {
+            if loop_counter % 20 == 0 {
+                 let _ = bt.send_analog_debug(
+                     last_weighted_pos as i16,
+                     last_intensity as u16,
+                     last_steering as i8,
+                     last_left_speed,
+                     last_right_speed
+                 ).await;
             }
         }
         

@@ -41,6 +41,7 @@ const MSG = {
     DEBUG: 0x14,
     CALIBRATION_START: 0x15,
     CALIBRATION_END: 0x16,
+    DEBUG_ANALOG: 0x17,
     ERROR: 0xFF,
 };
 
@@ -229,6 +230,39 @@ async function connectSerial(portName, ws) {
                                 mode: debugMode,
                                 position: debugPosition,
                                 motorAction: debugMotorAction
+                            }));
+                        }
+                        break;
+
+                    case MSG.DEBUG_ANALOG:
+                        // [Type 0x17] [Pos_H] [Pos_L] [Int_H] [Int_L] [Steer] [L_Speed] [R_Speed]
+                        if (i + 7 < data.length) {
+                            const posH = data[++i];
+                            const posL = data[++i];
+                            // Combine signed 16-bit big endian
+                            let pos = (posH << 8) | posL;
+                            if (pos > 32767) pos -= 65536; // signed 16-bit
+
+                            const intH = data[++i];
+                            const intL = data[++i];
+                            const intensity = (intH << 8) | intL;
+
+                            const steerByte = data[++i];
+                            let steering = steerByte;
+                            if (steering > 127) steering -= 256; // signed 8-bit
+
+                            const leftSpeed = data[++i];
+                            const rightSpeed = data[++i];
+
+                            const text = `Pos:${pos} Int:${intensity} St:${steering} L:${leftSpeed} R:${rightSpeed}`;
+                            console.log(`← ANALOG: ${text}`);
+
+                            ws.send(JSON.stringify({
+                                type: 'debug',
+                                mode: 3, // LineRunning assumption
+                                position: 0,
+                                motorAction: 0,
+                                text: text
                             }));
                         }
                         break;

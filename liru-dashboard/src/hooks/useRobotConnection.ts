@@ -23,6 +23,8 @@ interface UseRobotConnectionReturn {
     pollingEnabled: boolean;
     setPollingEnabled: (enabled: boolean) => void;
     calibrationStatus: CalibrationStatus;
+    debugLog: string[];
+    clearDebugLog: () => void;
 }
 
 export function useRobotConnection(): UseRobotConnectionReturn {
@@ -33,6 +35,7 @@ export function useRobotConnection(): UseRobotConnectionReturn {
     const [sensorBinary, setSensorBinary] = useState<string>('00000000');
     const [rawSensorData, setRawSensorData] = useState<number[]>([]);
     const [calibrationStatus, setCalibrationStatus] = useState<CalibrationStatus>('idle');
+    const [debugLog, setDebugLog] = useState<string[]>([]);
 
     // Ref to track calibration start time for debouncing
     const calibrationStartTime = useRef<number>(0);
@@ -91,12 +94,21 @@ export function useRobotConnection(): UseRobotConnectionReturn {
                     }
                     break;
                 case 'debug':
-                    const actionNames = ['STOP', 'FWD', 'LEFT', 'RIGHT'];
-                    const modeNames = ['Car', 'LineIdle', 'LineCal', 'LineRun'];
-                    const pos = (data.position || 0).toString(2).padStart(8, '0');
-                    const action = actionNames[data.motorAction] || data.motorAction;
-                    const modeName = modeNames[data.mode] || data.mode;
-                    setLastMessage(`[${modeName}] Pos:${pos} Motor:${action}`);
+                    const timestamp = new Date().toLocaleTimeString();
+                    let debugMsg = "";
+
+                    if (data.text) {
+                        debugMsg = `[${timestamp}] ${data.text}`;
+                    } else {
+                        const actionNames = ['CENTER', 'LOST', 'LEFT', 'RIGHT'];
+                        const modeNames = ['Car', 'LineIdle', 'LineCal', 'LineRun'];
+                        const pos = (data.position || 0).toString(2).padStart(8, '0');
+                        const action = actionNames[data.motorAction] || data.motorAction;
+                        const modeName = modeNames[data.mode] || data.mode;
+                        debugMsg = `[${timestamp}] ${modeName} | Pos:${pos} | Dir:${action}`;
+                    }
+                    setLastMessage(debugMsg);
+                    setDebugLog(prev => [...prev.slice(-999), debugMsg]); // Keep last 1000 messages
                     break;
             }
         };
@@ -224,5 +236,7 @@ export function useRobotConnection(): UseRobotConnectionReturn {
         pollingEnabled,
         setPollingEnabled,
         calibrationStatus,
+        debugLog,
+        clearDebugLog: () => setDebugLog([]),
     };
 }
