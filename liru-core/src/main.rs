@@ -318,22 +318,22 @@ async fn main(spawner: Spawner) {
                     // Calculate motor speeds based on zones
                     let (left_speed, right_speed, steering): (i8, i8, i32) = if abs_pos < 500 {
                         // === CENTER ZONE: Gentle proportional steering ===
-                        // Line is well centered - higher speed, gentle corrections
-                        let base_speed: i32 = 80;
-                        let kp: i32 = 45;  // Slightly stronger steering (smaller divisor) to compensate for speed
+                        // Line is well centered - max speed on straights
+                        let base_speed: i32 = 90;
+                        let kp: i32 = 40;  // Stronger steering to maintain high speed
                         let steer = position / kp;
-                        let l = (base_speed + steer).clamp(50, 95) as i8;
-                        let r = (base_speed - steer).clamp(50, 95) as i8;
+                        let l = (base_speed + steer).clamp(55, 100) as i8;
+                        let r = (base_speed - steer).clamp(55, 100) as i8;
                         (l, r, steer)
                         
                     } else if abs_pos < 1500 {
                         // === WARNING ZONE: Stronger proportional steering ===
-                        // Line is drifting - reduce speed slightly, increase steering response
-                        let base_speed: i32 = 65;
-                        let kp: i32 = 25;  // Stronger Kp divisor (more aggressive)
+                        // Line is drifting - still fast but ready to correct
+                        let base_speed: i32 = 75;
+                        let kp: i32 = 25;  
                         let steer = position / kp;
-                        let l = (base_speed + steer).clamp(35, 95) as i8;
-                        let r = (base_speed - steer).clamp(35, 95) as i8;
+                        let l = (base_speed + steer).clamp(40, 100) as i8;
+                        let r = (base_speed - steer).clamp(40, 100) as i8;
                         (l, r, steer)
                         
                     } else if abs_pos < 2500 {
