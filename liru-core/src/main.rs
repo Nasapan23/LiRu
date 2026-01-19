@@ -248,43 +248,65 @@ async fn main(spawner: Spawner) {
                 last_position = raw_binary;
 
                 if intensity == 0 {
-                    // Lost line - search in last known direction (moderate speed)
+                    // Lost line - search in last known direction with aggressive turn
                     match last_direction {
-                        d if d < 0 => motors.turn_left(55),
-                        d if d > 0 => motors.turn_right(55),
+                        d if d < 0 => motors.set_both(20, 70),  // Pivot left
+                        d if d > 0 => motors.set_both(70, 20),  // Pivot right
                         _ => motors.forward(50),
                     }
                 } else {
-                    // Line found - Deliberate Proportional Control
+                    // Line found - TIERED/ZONED RESPONSE
                     // Physical orientation: Index 0 = Left side of robot
                     // Negative position = line on LEFT -> need to turn LEFT
                     
-                    // Absolute position determines behavior
                     let abs_pos = if position < 0 { -position } else { position };
+                    let sign = if position < 0 { -1i32 } else { 1i32 };
                     
-                    // Constants - gentler steering response
-                    let kp_divisor: i32 = 100;
-                    
-                    // Calculate steering adjustment
-                    let steering = position / kp_divisor;
-                    
-                    // Speed depends on how centered the line is
-                    // More centered = faster, off-center = slower but still moving
-                    // Minimum 50 to overcome motor friction!
-                    let base_speed: i32 = if abs_pos < 500 {
-                        // Line is well centered - go at good speed
-                        65
+                    // Calculate motor speeds based on zones
+                    let (left_speed, right_speed, steering): (i8, i8, i32) = if abs_pos < 500 {
+                        // === CENTER ZONE: Gentle proportional steering ===
+                        // Line is well centered - normal speed, gentle corrections
+                        let base_speed: i32 = 65;
+                        let kp: i32 = 50;  // Gentler Kp divisor
+                        let steer = position / kp;
+                        let l = (base_speed + steer).clamp(45, 75) as i8;
+                        let r = (base_speed - steer).clamp(45, 75) as i8;
+                        (l, r, steer)
+                        
                     } else if abs_pos < 1500 {
-                        // Line is slightly off - moderate speed
-                        55
+                        // === WARNING ZONE: Stronger proportional steering ===
+                        // Line is drifting - reduce speed, increase steering response
+                        let base_speed: i32 = 55;
+                        let kp: i32 = 30;  // Stronger Kp divisor (more aggressive)
+                        let steer = position / kp;
+                        let l = (base_speed + steer).clamp(30, 75) as i8;
+                        let r = (base_speed - steer).clamp(30, 75) as i8;
+                        (l, r, steer)
+                        
+                    } else if abs_pos < 2500 {
+                        // === CRITICAL ZONE: Aggressive differential steering ===
+                        // Line is far off - big speed difference to turn sharply
+                        let steer = sign * 25;  // Fixed aggressive steering value
+                        if position < 0 {
+                            // Line on left -> turn left hard (slow left, fast right)
+                            (25, 65, steer)
+                        } else {
+                            // Line on right -> turn right hard (fast left, slow right)
+                            (65, 25, steer)
+                        }
+                        
                     } else {
-                        // Line is far off - slower but still moving
-                        50
+                        // === EMERGENCY ZONE: Pivot turn ===
+                        // Line at extreme edge - near pivot (one motor very slow/stopped)
+                        let steer = sign * 40;  // Maximum steering indication
+                        if position < 0 {
+                            // Line on left -> pivot left aggressively
+                            (15, 70, steer)
+                        } else {
+                            // Line on right -> pivot right aggressively
+                            (70, 15, steer)
+                        }
                     };
-                    
-                    // Calculate motor speeds (cap at 75 for safety)
-                    let left_speed = (base_speed + steering).clamp(0, 75) as i8;
-                    let right_speed = (base_speed - steering).clamp(0, 75) as i8;
                     
                     motors.set_both(left_speed, right_speed);
                     
@@ -294,12 +316,12 @@ async fn main(spawner: Spawner) {
                     last_right_speed = right_speed as u8;
                     
                     // Update last direction for when we lose line
-                    if steering > 5 {
-                        last_direction = 1;  // Was turning right
-                    } else if steering < -5 {
-                        last_direction = -1; // Was turning left
+                    if position > 300 {
+                        last_direction = 1;  // Line on right, was turning right
+                    } else if position < -300 {
+                        last_direction = -1; // Line on left, was turning left
                     } else {
-                        last_direction = 0;  // Going straight
+                        last_direction = 0;  // Centered
                     }
                 }
             }
