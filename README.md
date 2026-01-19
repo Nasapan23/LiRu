@@ -4,6 +4,6 @@
 
 Nucleo F401RE
 Driver DRV8833
-QTR 8RC SENSORS
+HY-S301 8-Channel Line Tracking Sensor Module
 HC-05 Bluetooth
 pololu micro dc 2x 

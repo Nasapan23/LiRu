@@ -70,4 +70,4 @@ PB0 - Line 4 - ADC1/8
 PC1 - Line 5 - ADC1/11
 PC0 - Line 6 - ADC1/10
 PC3 - Line 7 - ADC1/13
-PC2 - Line 8 - ADC1/12 
+PC2 - Line 8 - AC1/12 

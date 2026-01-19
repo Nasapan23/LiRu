@@ -221,10 +221,51 @@ async fn main(spawner: Spawner) {
                 // Waiting for Start command
             }
             RobotMode::LineFollowerCalibrating(start_time) => {
+                let elapsed = start_time.elapsed().as_millis();
+
                 // Calibrate for 10 seconds
-                if start_time.elapsed().as_secs() < 10 {
+                if elapsed < 10000 {
                     sensors.update_calibration();
+                    
+                    // Auto-calibration: sweep left/right ~60 degrees
+                    // Speed 70 to overcome friction (user reported <60 doesn't move)
+                    let speed = 70;
+                    
+                    // Sequence design for 10s total:
+                    // T_sweep = 700ms (approx 60 deg)
+                    // T_return = 1400ms (approx 120 deg, +60 to -60)
+                    // 1. Left (0->L): 700ms
+                    // 2. Right (L->R): 1400ms
+                    // 3. Left (R->L): 1400ms
+                    // 4. Right (L->R): 1400ms
+                    // 5. Left (R->L): 1400ms
+                    // 6. Right (L->R): 1400ms
+                    // 7. Left (R->L): 1400ms
+                    // 8. Right (L->C): 700ms (Return to center)
+                    // 9. Stop: Remaining time
+                    
+                    if elapsed < 700 {
+                        motors.turn_left(speed);
+                    } else if elapsed < 2100 {
+                        motors.turn_right(speed);
+                    } else if elapsed < 3500 {
+                        motors.turn_left(speed);
+                    } else if elapsed < 4900 {
+                        motors.turn_right(speed);
+                    } else if elapsed < 6300 {
+                        motors.turn_left(speed);
+                    } else if elapsed < 7700 {
+                        motors.turn_right(speed);
+                    } else if elapsed < 9100 {
+                        motors.turn_left(speed);
+                    } else if elapsed < 9800 {
+                        motors.turn_right(speed);
+                    } else {
+                        // Stop for the last fraction of a second
+                        motors.stop_all();
+                    }
                 } else {
+                    motors.stop_all();
                     info!("Calibration Complete! Running...");
                     sensors.finalize_calibration();
                     let _ = bt.send_calibration_end().await;
