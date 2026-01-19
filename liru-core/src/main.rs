@@ -223,46 +223,58 @@ async fn main(spawner: Spawner) {
             RobotMode::LineFollowerCalibrating(start_time) => {
                 let elapsed = start_time.elapsed().as_millis();
 
-                // Calibrate for 10 seconds
+                // Calibrate for 10 seconds total
                 if elapsed < 10000 {
-                    sensors.update_calibration();
                     
-                    // Auto-calibration: sweep left/right ~60 degrees
-                    // Speed 70 to overcome friction (user reported <60 doesn't move)
-                    let speed = 70;
-                    
-                    // Sequence design for 10s total:
-                    // T_sweep = 700ms (approx 60 deg)
-                    // T_return = 1400ms (approx 120 deg, +60 to -60)
-                    // 1. Left (0->L): 700ms
-                    // 2. Right (L->R): 1400ms
-                    // 3. Left (R->L): 1400ms
-                    // 4. Right (L->R): 1400ms
-                    // 5. Left (R->L): 1400ms
-                    // 6. Right (L->R): 1400ms
-                    // 7. Left (R->L): 1400ms
-                    // 8. Right (L->C): 700ms (Return to center)
-                    // 9. Stop: Remaining time
-                    
-                    if elapsed < 700 {
-                        motors.turn_left(speed);
-                    } else if elapsed < 2100 {
-                        motors.turn_right(speed);
-                    } else if elapsed < 3500 {
-                        motors.turn_left(speed);
-                    } else if elapsed < 4900 {
-                        motors.turn_right(speed);
-                    } else if elapsed < 6300 {
-                        motors.turn_left(speed);
-                    } else if elapsed < 7700 {
-                        motors.turn_right(speed);
-                    } else if elapsed < 9100 {
-                        motors.turn_left(speed);
-                    } else if elapsed < 9800 {
-                        motors.turn_right(speed);
+                    if elapsed < 8000 {
+                        // Phase 1: Sweep for min/max calibration
+                        sensors.update_calibration();
+                        // Speed 70 to overcome friction
+                        let speed = 70;
+                        
+                        // Sweep Sequence (approx 1.4s per full sweep)
+                        if elapsed < 700 {
+                            motors.turn_left(speed);
+                        } else if elapsed < 2100 {
+                            motors.turn_right(speed);
+                        } else if elapsed < 3500 {
+                            motors.turn_left(speed);
+                        } else if elapsed < 4900 {
+                            motors.turn_right(speed);
+                        } else if elapsed < 6300 {
+                            motors.turn_left(speed);
+                        } else if elapsed < 7700 {
+                            motors.turn_right(speed);
+                        } else {
+                            // Turn Left blindly for remaining time (7700..8000)
+                            // This guarantees we are moving towards center/left before tracking starts
+                            motors.turn_left(speed);
+                        }
                     } else {
-                        // Stop for the last fraction of a second
-                        motors.stop_all();
+                        // Phase 2: Active Centering Phase (8s to 10s)
+                        // Use collected calibration data to find line center
+                        // Continue updating calibration in case we see new extremes
+                        sensors.update_calibration();
+                        
+                        let (position, intensity) = sensors.read_line_position();
+                        
+                        // Check if we have a line signal
+                        if intensity > 0 {
+                            // P-Control to center (Target position = 0)
+                            // Position range +/- 3500. 
+                            let turn = (position / 20).clamp(-50, 50) as i8;
+                            
+                            // Deadband to avoid jitter
+                            if turn.abs() < 10 {
+                                motors.stop_all();
+                            } else {
+                                // To turn Right (Pos > 0), pivot Right (L fwd, R rev)
+                                motors.set_both(turn, -turn);
+                            }
+                        } else {
+                            // Stop if line is temporarily lost
+                            motors.stop_all();
+                        }
                     }
                 } else {
                     motors.stop_all();
@@ -291,9 +303,9 @@ async fn main(spawner: Spawner) {
                 if intensity == 0 {
                     // Lost line - search in last known direction with aggressive turn
                     match last_direction {
-                        d if d < 0 => motors.set_both(20, 70),  // Pivot left
-                        d if d > 0 => motors.set_both(70, 20),  // Pivot right
-                        _ => motors.forward(50),
+                        d if d < 0 => motors.set_both(20, 90),  // Pivot left
+                        d if d > 0 => motors.set_both(90, 20),  // Pivot right
+                        _ => motors.forward(60),
                     }
                 } else {
                     // Line found - TIERED/ZONED RESPONSE
@@ -306,46 +318,46 @@ async fn main(spawner: Spawner) {
                     // Calculate motor speeds based on zones
                     let (left_speed, right_speed, steering): (i8, i8, i32) = if abs_pos < 500 {
                         // === CENTER ZONE: Gentle proportional steering ===
-                        // Line is well centered - normal speed, gentle corrections
-                        let base_speed: i32 = 65;
-                        let kp: i32 = 50;  // Gentler Kp divisor
+                        // Line is well centered - higher speed, gentle corrections
+                        let base_speed: i32 = 80;
+                        let kp: i32 = 45;  // Slightly stronger steering (smaller divisor) to compensate for speed
                         let steer = position / kp;
-                        let l = (base_speed + steer).clamp(45, 75) as i8;
-                        let r = (base_speed - steer).clamp(45, 75) as i8;
+                        let l = (base_speed + steer).clamp(50, 95) as i8;
+                        let r = (base_speed - steer).clamp(50, 95) as i8;
                         (l, r, steer)
                         
                     } else if abs_pos < 1500 {
                         // === WARNING ZONE: Stronger proportional steering ===
-                        // Line is drifting - reduce speed, increase steering response
-                        let base_speed: i32 = 55;
-                        let kp: i32 = 30;  // Stronger Kp divisor (more aggressive)
+                        // Line is drifting - reduce speed slightly, increase steering response
+                        let base_speed: i32 = 65;
+                        let kp: i32 = 25;  // Stronger Kp divisor (more aggressive)
                         let steer = position / kp;
-                        let l = (base_speed + steer).clamp(30, 75) as i8;
-                        let r = (base_speed - steer).clamp(30, 75) as i8;
+                        let l = (base_speed + steer).clamp(35, 95) as i8;
+                        let r = (base_speed - steer).clamp(35, 95) as i8;
                         (l, r, steer)
                         
                     } else if abs_pos < 2500 {
                         // === CRITICAL ZONE: Aggressive differential steering ===
                         // Line is far off - big speed difference to turn sharply
-                        let steer = sign * 25;  // Fixed aggressive steering value
+                        let steer = sign * 35;  // Fixed aggressive steering value
                         if position < 0 {
                             // Line on left -> turn left hard (slow left, fast right)
-                            (25, 65, steer)
+                            (30, 85, steer)
                         } else {
                             // Line on right -> turn right hard (fast left, slow right)
-                            (65, 25, steer)
+                            (85, 30, steer)
                         }
                         
                     } else {
                         // === EMERGENCY ZONE: Pivot turn ===
                         // Line at extreme edge - near pivot (one motor very slow/stopped)
-                        let steer = sign * 40;  // Maximum steering indication
+                        let steer = sign * 50;  // Maximum steering indication
                         if position < 0 {
                             // Line on left -> pivot left aggressively
-                            (15, 70, steer)
+                            (20, 95, steer)
                         } else {
                             // Line on right -> pivot right aggressively
-                            (70, 15, steer)
+                            (95, 20, steer)
                         }
                     };
                     
