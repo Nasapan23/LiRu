@@ -27,6 +27,8 @@ pub mod cmd {
     pub const GET_RAW_SENSORS: u8 = 0x05;
     /// Set robot mode: [CMD_SET_MODE, mode_byte] (0=Car, 1=Line)
     pub const SET_MODE: u8 = 0x06;
+    /// Start command for Line Follower calibration
+    pub const START: u8 = 0x07;
 }
 
 /// Message types to GUI
@@ -39,6 +41,12 @@ pub mod msg {
     pub const CONNECTED: u8 = 0x12;
     /// Raw sensor data: [MSG_RAW_SENSORS, 16 bytes of data]
     pub const RAW_SENSORS: u8 = 0x13;
+    /// Debug message: [MSG_DEBUG, mode_byte, position_byte, motor_action_byte]
+    pub const DEBUG: u8 = 0x14;
+    /// Calibration started
+    pub const CALIBRATION_START: u8 = 0x15;
+    /// Calibration ended
+    pub const CALIBRATION_END: u8 = 0x16;
     /// Error message
     pub const ERROR: u8 = 0xFF;
 }
@@ -58,6 +66,8 @@ pub enum Command {
     Ping,
     /// Set Robot Mode
     SetMode(u8),
+    /// Start calibration/run
+    Start,
     /// Unknown command
     Unknown(u8),
 }
@@ -77,6 +87,16 @@ impl<'d> Bluetooth<'d> {
     /// Check if a device is connected (STATE pin high)
     pub fn is_connected(&self) -> bool {
         self.state_pin.is_high()
+    }
+
+    /// Read a single byte with timeout (returns None if no data within timeout)
+    pub async fn try_read_byte(&mut self, timeout_ms: u64) -> Option<u8> {
+        use embassy_time::{with_timeout, Duration};
+        let mut buf = [0u8; 1];
+        match with_timeout(Duration::from_millis(timeout_ms), self.uart.read(&mut buf)).await {
+            Ok(Ok(_)) => Some(buf[0]),
+            _ => None,
+        }
     }
 
     /// Read a single byte (blocking until received)
@@ -118,6 +138,22 @@ impl<'d> Bluetooth<'d> {
         self.write(&[msg::CONNECTED]).await
     }
 
+    /// Send calibration start notification
+    pub async fn send_calibration_start(&mut self) -> Result<(), usart::Error> {
+        self.write(&[msg::CALIBRATION_START]).await
+    }
+
+    /// Send calibration end notification
+    pub async fn send_calibration_end(&mut self) -> Result<(), usart::Error> {
+        self.write(&[msg::CALIBRATION_END]).await
+    }
+
+    /// Send debug message: mode, sensor position, motor action
+    /// motor_action: 0=stop, 1=forward, 2=left, 3=right
+    pub async fn send_debug(&mut self, mode: u8, position: u8, motor_action: u8) -> Result<(), usart::Error> {
+        self.write(&[msg::DEBUG, mode, position, motor_action]).await
+    }
+
     /// Read and parse a command from GUI
     /// Returns None if no complete command available
     pub async fn read_command(&mut self) -> Result<Command, usart::Error> {
@@ -137,7 +173,33 @@ impl<'d> Bluetooth<'d> {
                 let mode = self.read_byte().await?;
                 Ok(Command::SetMode(mode))
             }
+            cmd::START => Ok(Command::Start),
             other => Ok(Command::Unknown(other)),
+        }
+    }
+
+    /// Try to read a command with timeout (non-blocking)
+    /// Returns None if no data available within timeout
+    pub async fn try_read_command(&mut self, timeout_ms: u64) -> Option<Command> {
+        let cmd_byte = self.try_read_byte(timeout_ms).await?;
+
+        match cmd_byte {
+            cmd::MOTOR => {
+                // For multi-byte commands, we need to wait for the rest
+                let left = self.try_read_byte(50).await? as i8;
+                let right = self.try_read_byte(50).await? as i8;
+                Some(Command::Motor { left, right })
+            }
+            cmd::STOP => Some(Command::Stop),
+            cmd::GET_SENSORS => Some(Command::GetSensors),
+            cmd::GET_RAW_SENSORS => Some(Command::GetRawSensors),
+            cmd::PING => Some(Command::Ping),
+            cmd::SET_MODE => {
+                let mode = self.try_read_byte(50).await?;
+                Some(Command::SetMode(mode))
+            }
+            cmd::START => Some(Command::Start),
+            other => Some(Command::Unknown(other)),
         }
     }
 }

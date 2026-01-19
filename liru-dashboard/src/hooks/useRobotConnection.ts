@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
+export type CalibrationStatus = 'idle' | 'calibrating' | 'running';
 
 interface UseRobotConnectionReturn {
     connectionState: ConnectionState;
@@ -17,8 +18,11 @@ interface UseRobotConnectionReturn {
     requestRawSensors: () => void;
     sendPing: () => void;
     sendSetMode: (mode: 'car' | 'line') => void;
+    sendStart: () => void;
+    resetCalibration: () => void;
     pollingEnabled: boolean;
     setPollingEnabled: (enabled: boolean) => void;
+    calibrationStatus: CalibrationStatus;
 }
 
 export function useRobotConnection(): UseRobotConnectionReturn {
@@ -28,6 +32,10 @@ export function useRobotConnection(): UseRobotConnectionReturn {
     const [sensorData, setSensorData] = useState<number | null>(null);
     const [sensorBinary, setSensorBinary] = useState<string>('00000000');
     const [rawSensorData, setRawSensorData] = useState<number[]>([]);
+    const [calibrationStatus, setCalibrationStatus] = useState<CalibrationStatus>('idle');
+
+    // Ref to track calibration start time for debouncing
+    const calibrationStartTime = useRef<number>(0);
 
     const connect = useCallback((port: string) => {
         setConnectionState('connecting');
@@ -63,7 +71,32 @@ export function useRobotConnection(): UseRobotConnectionReturn {
                 case 'status':
                     if (data.status === 'disconnected') {
                         setConnectionState('disconnected');
+                        setCalibrationStatus('idle');
                     }
+                    break;
+                case 'calibrationStart':
+                    console.log('Received calibrationStart');
+                    calibrationStartTime.current = Date.now();
+                    setCalibrationStatus('calibrating');
+                    break;
+                case 'calibrationEnd':
+                    // Only accept calibrationEnd if:
+                    // 1. We started calibrating at least 5 seconds ago
+                    // 2. This prevents spurious signals from raw data
+                    const elapsed = Date.now() - calibrationStartTime.current;
+                    console.log('Received calibrationEnd, elapsed:', elapsed);
+                    if (calibrationStartTime.current > 0 && elapsed >= 5000) {
+                        setCalibrationStatus('running');
+                        calibrationStartTime.current = 0;
+                    }
+                    break;
+                case 'debug':
+                    const actionNames = ['STOP', 'FWD', 'LEFT', 'RIGHT'];
+                    const modeNames = ['Car', 'LineIdle', 'LineCal', 'LineRun'];
+                    const pos = (data.position || 0).toString(2).padStart(8, '0');
+                    const action = actionNames[data.motorAction] || data.motorAction;
+                    const modeName = modeNames[data.mode] || data.mode;
+                    setLastMessage(`[${modeName}] Pos:${pos} Motor:${action}`);
                     break;
             }
         };
@@ -137,6 +170,19 @@ export function useRobotConnection(): UseRobotConnectionReturn {
         }
     }, [ws, connectionState]);
 
+    const sendStart = useCallback(() => {
+        if (ws && connectionState === 'connected') {
+            console.log('Sending start command...');
+            ws.send(JSON.stringify({ type: 'start' }));
+        } else {
+            console.log('Cannot send start: ws=', !!ws, 'connectionState=', connectionState);
+        }
+    }, [ws, connectionState]);
+
+    const resetCalibration = useCallback(() => {
+        setCalibrationStatus('idle');
+    }, []);
+
     const [pollingEnabled, setPollingEnabled] = useState(false);
 
     // Auto-poll sensors when connected AND polling is enabled
@@ -173,7 +219,10 @@ export function useRobotConnection(): UseRobotConnectionReturn {
         requestRawSensors,
         sendPing,
         sendSetMode,
+        sendStart,
+        resetCalibration,
         pollingEnabled,
-        setPollingEnabled
+        setPollingEnabled,
+        calibrationStatus,
     };
 }

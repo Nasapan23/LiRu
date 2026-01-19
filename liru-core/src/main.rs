@@ -13,11 +13,11 @@ use embassy_stm32::bind_interrupts;
 use embassy_stm32::usart::{Config as UartConfig, Uart};
 
 use embassy_stm32::Config;
-use embassy_time::Timer;
+use embassy_time::{Timer, Instant};
 use {defmt_rtt as _, panic_probe as _};
 
 use motors::MotorController;
-use sensors::LineSensors;
+use sensors::{LineSensors, CalibratedSensors};
 use bluetooth::{Bluetooth, Command};
 
 bind_interrupts!(struct Irqs {
@@ -37,7 +37,9 @@ async fn blink_task(mut led: Output<'static>) {
 #[derive(PartialEq)]
 enum RobotMode {
     Car,
-    LineFollower,
+    LineFollowerIdle,
+    LineFollowerCalibrating(Instant),
+    LineFollowerRunning,
 }
 
 #[embassy_executor::main]
@@ -57,10 +59,10 @@ async fn main(spawner: Spawner) {
 
     // Initialize sensors via ADC
     let adc = Adc::new(p.ADC1);
-    let mut sensors = LineSensors::new(
+    let mut sensors = CalibratedSensors::new(LineSensors::new(
         adc,
         p.PA0, p.PA1, p.PA4, p.PB0, p.PC1, p.PC0, p.PC3, p.PC2
-    );
+    ));
     info!("Sensors initialized");
 
     // Initialize Bluetooth (USART6)
@@ -94,43 +96,68 @@ async fn main(spawner: Spawner) {
     loop {
         // Check Bluetooth connection
         if bt.is_connected() {
-            // Try to read command
-            match bt.read_command().await {
-                Ok(cmd) => {
-                    match cmd {
-                        Command::Motor { left, right } => {
-                            motors.set_both(left, right);
+            // Use shorter timeout during calibration so we can update sensors
+            // Use longer timeout otherwise to ensure responsiveness
+            let timeout_ms = match mode {
+                RobotMode::LineFollowerCalibrating(_) | RobotMode::LineFollowerRunning => 20,
+                _ => 100,
+            };
+            
+            // Try to read command with timeout (non-blocking)
+            if let Some(cmd) = bt.try_read_command(timeout_ms).await {
+                match cmd {
+                    Command::Motor { left, right } => {
+                        motors.set_both(left, right);
+                    }
+                    Command::Stop => {
+                        motors.stop_all();
+                        // If in Line Follower mode, reset to Idle so user can recalibrate
+                        match mode {
+                            RobotMode::LineFollowerCalibrating(_) | RobotMode::LineFollowerRunning => {
+                                info!("Stop received, resetting to Line Follower Idle");
+                                mode = RobotMode::LineFollowerIdle;
+                            }
+                            _ => {}
                         }
-                        Command::Stop => {
+                    }
+                    Command::SetMode(m) => {
+                        if m == 1 {
+                            mode = RobotMode::LineFollowerIdle;
+                            info!("Switched to Line Follower Mode (Idle)");
+                            motors.stop_all();
+                        } else {
+                            mode = RobotMode::Car;
+                            info!("Switched to Car Mode");
                             motors.stop_all();
                         }
-                        Command::SetMode(m) => {
-                            if m == 1 {
-                                mode = RobotMode::LineFollower;
-                                info!("Switched to Line Follower Mode");
-                            } else {
-                                mode = RobotMode::Car;
-                                info!("Switched to Car Mode");
-                            }
+                    }
+                    Command::Start => {
+                         if let RobotMode::LineFollowerIdle = mode {
+                            info!("Starting Calibration...");
+                            sensors.reset_calibration();
+                            let _ = bt.send_calibration_start().await;
+                            mode = RobotMode::LineFollowerCalibrating(Instant::now());
                         }
-                        Command::GetSensors => {
-                            // Only allow reading sensors if requested, regardless of mode (debug)
-                            let binary = sensors.read_binary(1500);
-                            // Keep infrequent logs or remove if strictly needed, but sensor readout implies we want data
-                            // info!("Sensors: {:08b}", binary); 
-                            let _ = bt.send_sensors(binary).await;
-                        }
-                        Command::GetRawSensors => {
-                             // Only allow reading sensors if requested
-                            let raw = sensors.read_all();
-                            // info!("Raw Sens: {:?}", raw);
-                            let _ = bt.send_raw_sensors(raw).await;
-                        }
-                        Command::Ping => {
-                            let _ = bt.send_pong().await;
-                        }
-                        Command::Unknown(byte) => {
-                            // Handle WASD keyboard input
+                    }
+                    Command::GetSensors => {
+                        // Only allow reading sensors if requested, regardless of mode (debug)
+                        let binary = sensors.read_binary();
+                        // Keep infrequent logs or remove if strictly needed, but sensor readout implies we want data
+                        // info!("Sensors: {:08b}", binary); 
+                        let _ = bt.send_sensors(binary).await;
+                    }
+                    Command::GetRawSensors => {
+                         // Only allow reading sensors if requested
+                        let raw = sensors.read_all();
+                        // info!("Raw Sens: {:?}", raw);
+                        let _ = bt.send_raw_sensors(raw).await;
+                    }
+                    Command::Ping => {
+                        let _ = bt.send_pong().await;
+                    }
+                    Command::Unknown(byte) => {
+                        // Handle WASD keyboard input ONLY in Car mode
+                        if let RobotMode::Car = mode {
                             match byte {
                                 b'W' | b'w' => {
                                     motors.forward(speed);
@@ -160,13 +187,62 @@ async fn main(spawner: Spawner) {
                         }
                     }
                 }
-                Err(_) => {
-                    // Read error, continue
-                }
             }
         } else {
-            // Not connected, just blink and wait
-            Timer::after_millis(100).await;
+            // Not connected, just blink and wait by skipping logic
         }
+
+        // Logic loop based on mode (Non-blocking)
+        match mode {
+            RobotMode::Car => {
+                // Controlled via Bluetooth/UART, nothing to do here
+            }
+            RobotMode::LineFollowerIdle => {
+                // Waiting for Start command
+            }
+            RobotMode::LineFollowerCalibrating(start_time) => {
+                // Calibrate for 10 seconds
+                if start_time.elapsed().as_secs() < 10 {
+                    sensors.update_calibration();
+                } else {
+                    info!("Calibration Complete! Running...");
+                    sensors.finalize_calibration();
+                    let _ = bt.send_calibration_end().await;
+                    mode = RobotMode::LineFollowerRunning;
+                }
+            }
+            RobotMode::LineFollowerRunning => {
+                let position = sensors.read_binary();
+                // Sensors: bit 0 = sensor 1 (left edge), bit 7 = sensor 8 (right edge)
+                
+                // Count how many sensors see the line
+                let sensor_count = position.count_ones();
+                
+                if sensor_count == 0 {
+                    // No sensors - lost line, keep going forward slowly
+                    motors.forward(50);
+                } else if sensor_count >= 6 {
+                    // Too many sensors on - probably confused or bad calibration
+                    // Just go forward at medium speed
+                    motors.forward(60);
+                } else if (position & 0b00011000) != 0 && sensor_count <= 4 {
+                    // Center sensors (bits 3,4) see line and not too many sensors
+                    motors.forward(80);
+                } else if (position & 0b11100000) != 0 {
+                    // Left side sensors (bits 5,6,7) see line -> Turn Left
+                    motors.turn_left(70);
+                } else if (position & 0b00000111) != 0 {
+                    // Right side sensors (bits 0,1,2) see line -> Turn Right
+                    motors.turn_right(70);
+                } else {
+                    // Default - go forward
+                    motors.forward(60);
+                }
+            }
+        }
+        
+        // Small delay to prevent tight loop hogging if nothing to do? 
+        // W/ Embassy, usually we await something. But here we poll.
+        Timer::after_millis(10).await;
     }
 }

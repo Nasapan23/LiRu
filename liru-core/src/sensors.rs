@@ -99,3 +99,79 @@ impl<'d> LineSensors<'d> {
         (sum / SENSOR_COUNT as u32) as u16
     }
 }
+
+/// Line sensor controller with calibration support
+pub struct CalibratedSensors<'d> {
+    sensors: LineSensors<'d>,
+    min_readings: SensorReadings,
+    max_readings: SensorReadings,
+    thresholds: SensorReadings,
+    calibrated: bool,
+}
+
+impl<'d> CalibratedSensors<'d> {
+    pub fn new(sensors: LineSensors<'d>) -> Self {
+        Self {
+            sensors,
+            min_readings: [4095; SENSOR_COUNT],
+            max_readings: [0; SENSOR_COUNT],
+            thresholds: [2000; SENSOR_COUNT], // Default safe value
+            calibrated: false,
+        }
+    }
+
+    pub fn read_all(&mut self) -> SensorReadings {
+        self.sensors.read_all()
+    }
+
+    pub fn reset_calibration(&mut self) {
+        self.min_readings = [4095; SENSOR_COUNT];
+        self.max_readings = [0; SENSOR_COUNT];
+        self.calibrated = false;
+        defmt::info!("Calibration reset");
+    }
+
+    pub fn update_calibration(&mut self) {
+        let readings = self.sensors.read_all();
+        for (i, &val) in readings.iter().enumerate() {
+            if val < self.min_readings[i] {
+                self.min_readings[i] = val;
+            }
+            if val > self.max_readings[i] {
+                self.max_readings[i] = val;
+            }
+        }
+    }
+
+    pub fn finalize_calibration(&mut self) {
+        defmt::info!("Calibration min: {:?}", self.min_readings);
+        defmt::info!("Calibration max: {:?}", self.max_readings);
+        
+        for i in 0..SENSOR_COUNT {
+            // Threshold is midpoint between min and max
+            // Add some hysteresis margin (40% from min towards max)
+            let range = self.max_readings[i].saturating_sub(self.min_readings[i]);
+            self.thresholds[i] = self.min_readings[i] + (range * 40 / 100);
+        }
+        
+        defmt::info!("Calibration thresholds: {:?}", self.thresholds);
+        self.calibrated = true;
+    }
+
+    /// Read binary using calibrated thresholds
+    pub fn read_binary(&mut self) -> u8 {
+        let readings = self.sensors.read_all();
+        let mut result: u8 = 0;
+
+        for (i, &value) in readings.iter().enumerate() {
+             // For these sensors (black line on white background):
+             // High value = Black (Line), Low value = White (Background)
+             // So if value > threshold, it's a line.
+            if value > self.thresholds[i] {
+                result |= 1 << i;
+            }
+        }
+        result
+    }
+}
+

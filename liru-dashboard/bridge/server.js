@@ -30,6 +30,7 @@ const CMD = {
     PING: 0x04,
     GET_RAW_SENSORS: 0x05,
     SET_MODE: 0x06,
+    START: 0x07,
 };
 
 const MSG = {
@@ -37,6 +38,9 @@ const MSG = {
     PONG: 0x11,
     CONNECTED: 0x12,
     RAW_SENSORS: 0x13,
+    DEBUG: 0x14,
+    CALIBRATION_START: 0x15,
+    CALIBRATION_END: 0x16,
     ERROR: 0xFF,
 };
 
@@ -102,6 +106,13 @@ wss.on('connection', (ws) => {
                         const mode = message.mode === 1 ? 1 : 0;
                         serialPort.write(Buffer.from([CMD.SET_MODE, mode]));
                         console.log(`→ Set Mode: ${mode === 0 ? 'Car' : 'Line Follower'}`);
+                    }
+                    break;
+
+                case 'start':
+                    if (serialPort && serialPort.isOpen) {
+                        serialPort.write(Buffer.from([CMD.START]));
+                        console.log('→ Start Calibration');
                     }
                     break;
 
@@ -204,10 +215,38 @@ async function connectSerial(portName, ws) {
                         ws.send(JSON.stringify({ type: 'robotConnected' }));
                         break;
 
+                    case MSG.DEBUG:
+                        // Debug message: mode, position, motor_action
+                        if (i + 3 < data.length) {
+                            const debugMode = data[++i];
+                            const debugPosition = data[++i];
+                            const debugMotorAction = data[++i];
+                            const actionNames = ['STOP', 'FWD', 'LEFT', 'RIGHT'];
+                            const modeNames = ['Car', 'LineIdle', 'LineCalib', 'LineRun'];
+                            console.log(`← DEBUG: Mode=${modeNames[debugMode] || debugMode} Pos=${debugPosition.toString(2).padStart(8, '0')} Motor=${actionNames[debugMotorAction] || debugMotorAction}`);
+                            ws.send(JSON.stringify({
+                                type: 'debug',
+                                mode: debugMode,
+                                position: debugPosition,
+                                motorAction: debugMotorAction
+                            }));
+                        }
+                        break;
+
+                    case MSG.CALIBRATION_START:
+                        console.log('← Calibration Started');
+                        ws.send(JSON.stringify({ type: 'calibrationStart' }));
+                        break;
+
+                    case MSG.CALIBRATION_END:
+                        console.log('← Calibration Ended');
+                        ws.send(JSON.stringify({ type: 'calibrationEnd' }));
+                        break;
+
                     default:
-                        // Legacy text message
-                        console.log(`← Raw: 0x${byte.toString(16)}`);
-                        ws.send(JSON.stringify({ type: 'raw', data: byte }));
+                        // Ignore unrecognized bytes to reduce noise
+                        // console.log(`← Raw: 0x${byte.toString(16)}`);
+                        break;
                 }
             }
         });
