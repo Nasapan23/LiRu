@@ -130,19 +130,31 @@ wss.on('connection', (ws) => {
 
 async function connectSerial(portName, ws) {
     try {
-        // Close existing connection
+        // Close existing connection properly
         if (serialPort && serialPort.isOpen) {
-            serialPort.close();
+            console.log('Closing existing connection...');
+            await new Promise((resolve) => {
+                serialPort.close((err) => {
+                    if (err) console.error('Error closing port:', err);
+                    resolve();
+                });
+            });
+            // Give Windows a moment to release the handle
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         serialPort = new SerialPort({
             path: portName,
             baudRate: BAUD_RATE,
-        });
-
-        serialPort.on('open', () => {
-            console.log(`✅ Connected to ${portName}`);
-            ws.send(JSON.stringify({ type: 'status', status: 'connected' }));
+        }, (err) => {
+            if (err) {
+                console.error(`Failed to open ${portName}:`, err.message);
+                ws.send(JSON.stringify({ type: 'error', error: err.message }));
+                serialPort = null;
+            } else {
+                console.log(`✅ Connected to ${portName}`);
+                ws.send(JSON.stringify({ type: 'status', status: 'connected' }));
+            }
         });
 
         // Binary data handler

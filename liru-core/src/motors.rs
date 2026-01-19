@@ -98,11 +98,8 @@ impl<'d> MotorController<'d> {
     /// * `direction` - Direction of rotation
     /// * `speed_percent` - Speed as percentage (0-100)
     pub fn set_motor(&mut self, motor: Motor, direction: Direction, speed_percent: u8) {
-        // Hardware calibration: Boost left motor by 1.5x due to friction
-        let adjusted_speed = match motor {
-            Motor::Left => (speed_percent as f32 * 1.5) as u32,
-            Motor::Right => speed_percent as u32,
-        };
+        // Both motors use 1x power
+        let adjusted_speed = speed_percent as u32;
         
         let speed = adjusted_speed.min(100);
         let duty = self.max_duty * speed / 100;
@@ -122,8 +119,14 @@ impl<'d> MotorController<'d> {
                 self.pwm.set_duty(rev_ch, duty);
             }
             Direction::Stop => {
-                self.pwm.set_duty(fwd_ch, 0);
+                // HACK: Power Bank Keep-Alive
+                // Instead of coasting (0,0), we drive Forward at 10% power.
+                // This draws current to prevent the power bank from sleeping,
+                // but should be too weak to move the motor (below static friction).
+                let keep_alive_duty = self.max_duty * 10 / 100; // 10% Duty Cycle
+                
                 self.pwm.set_duty(rev_ch, 0);
+                self.pwm.set_duty(fwd_ch, keep_alive_duty);
             }
         }
     }
