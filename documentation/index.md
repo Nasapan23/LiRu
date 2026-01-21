@@ -33,27 +33,27 @@ The complete system architecture spans three distinct layers:
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Dashboard Layer (Web Browser)                │
 │  React/TypeScript UI Components                                 │
-│  - ControlPad, SensorDisplay, SpeedControl, StatusPanel        │
+│  - ControlPad, SensorDisplay, SpeedControl, StatusPanel         │
 │  - WebSocket Client (ws://localhost:3001)                       │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               │ JSON over WebSocket
                               │
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Bridge Layer (Node.js)                         │
-│  WebSocket Server + Serial Port Bridge                           │
-│  - WebSocket Server (Port 3001)                                  │
-│  - Serial Port Interface (COM Port)                               │
-│  - Protocol Translation (JSON ↔ Binary)                          │
+│                    Bridge Layer (Node.js)                       │
+│  WebSocket Server + Serial Port Bridge                          │
+│  - WebSocket Server (Port 3001)                                 │
+│  - Serial Port Interface (COM Port)                             │
+│  - Protocol Translation (JSON ↔ Binary)                         │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               │ Binary Serial (9600 baud)
                               │
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Robot Firmware Layer (STM32F401RE)            │
-│  Rust/Embassy Embedded System                                    │
+│                    Robot Firmware Layer (STM32F401RE)           │
+│  Rust/Embassy Embedded System                                   │
 │  - Bluetooth Module (HC-05 via USART6)                          │
-│  - Motor Controller (DRV8833 via TIM1 PWM)                     │
+│  - Motor Controller (DRV8833 via TIM1 PWM)                      │
 │  - Sensor Array (HY-S301 via ADC1)                              │
 └─────────────────────────────────────────────────────────────────┘
 ```
