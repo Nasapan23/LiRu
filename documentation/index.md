@@ -313,6 +313,8 @@ The sensors are connected to the microcontroller's ADC channels (PA0, PA1, PA4, 
 
 ![Schematic Diagram](schematics.svg)
 
+### Robot Photos
+
 ![Robot Photo - Bottom View](robot-sub-crop.webp)
 
 ![Robot Photo - Top View](robot-sus-crop.webp)
