@@ -1,5 +1,3 @@
-Version: FILS English
-
 # LiRu - Line Follower In Rust
 
 A line-following robot controlled by an STM32F401RE microcontroller running Rust firmware, with wireless control and telemetry via Bluetooth.
